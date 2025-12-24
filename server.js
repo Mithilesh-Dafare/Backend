@@ -4,7 +4,6 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const { body, validationResult } = require('express-validator');
 const supabase = require('./config/supabase');
-const Razorpay = require('razorpay');
 const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
 
 // Load environment variables
@@ -32,35 +31,14 @@ app.get('/', (req, res) => {
       admin: '/admin',
       health: '/health',
       contact: '/api/contact',
-      createOrder: '/api/create-order',
-      verifyPayment: '/api/verify-payment'
+      // Order related endpoints removed as payment processing is not required
     },
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString()
   });
 });
 
-// ================= RAZORPAY ==================
-
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
-
 // ================= VALIDATION =================
-
-const validateOrder = [
-  body('name').notEmpty(),
-  body('phone').notEmpty(),
-  body('email').isEmail(),
-  body('address').notEmpty(),
-  body('city').notEmpty(),
-  body('country').notEmpty(),
-  body('postalCode').notEmpty(),
-  body('items').isArray({ min: 1 }),
-  body('totalAmount').isFloat({ min: 0 })
-];
-
 const validateContact = [
   body('name').notEmpty(),
   body('email').isEmail(),
@@ -268,76 +246,6 @@ Protected by Basic Authentication
   }
 });
 
-// ========== CREATE RAZORPAY ORDER ==========
-
-app.post('/api/create-order', validateOrder, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json(errors.array());
-
-    const amount = Math.round(req.body.totalAmount * 100);
-
-    const order = await razorpay.orders.create({
-      amount,
-      currency: 'INR',
-      receipt: `order_${Date.now()}`
-    });
-
-    res.json({ success: true, orderId: order.id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Order creation failed' });
-  }
-});
-
-// ========== VERIFY PAYMENT & SAVE ORDER ==========
-
-app.post('/api/verify-payment', validateOrder, async (req, res) => {
-  try {
-    const {
-      name, phone, email, address, city, country, postalCode,
-      items, totalAmount, paymentId
-    } = req.body;
-
-    const payment = await razorpay.payments.fetch(paymentId);
-    if (payment.status !== 'captured') {
-      return res.status(400).json({ error: 'Payment not captured' });
-    }
-
-    const { data: customer, error: cErr } = await supabase
-      .from('customers')
-      .insert([{ name, phone, email, address, city, country, postal_code: postalCode }])
-      .select()
-      .single();
-
-    if (cErr) throw cErr;
-
-    const { data: order, error: oErr } = await supabase
-      .from('orders')
-      .insert([{ customer_id: customer.id, total_amount: totalAmount, payment_status: 'completed', payment_id: paymentId }])
-      .select()
-      .single();
-
-    if (oErr) throw oErr;
-
-    for (const item of items) {
-      await supabase.from('order_items').insert([{
-        order_id: order.id,
-        millet_name: item.milletName,
-        quantity: item.quantity,
-        per_unit_price: item.price,
-        amount: item.quantity * item.price
-      }]);
-    }
-
-    res.json({ success: true, orderId: order.id });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Payment verification failed' });
-  }
-});
-
 // ========== CONTACT FORM ==========
 
 app.post('/api/contact', validateContact, async (req, res) => {
@@ -389,4 +297,3 @@ if (require.main === module) {
 
 // Export the Express API for Vercel
 module.exports = app;
-
