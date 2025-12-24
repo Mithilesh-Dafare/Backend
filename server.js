@@ -7,34 +7,38 @@ const supabase = require('./config/supabase');
 const Razorpay = require('razorpay');
 const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
 
+// Load environment variables
 require('dotenv').config();
+
 const app = express();
 
 // =================== CONFIG ===================
-
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
 // ================= MIDDLEWARE =================
-
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// In production, serve static files from the frontend/dist directory
-if (isProduction) {
-  const frontendPath = path.join(__dirname, '../frontend/dist');
-  app.use(express.static(frontendPath));
-  
-  // Handle SPA (Single Page Application) routing
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
+// API Information Route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'SayOne Ventures API is running',
+    endpoints: {
+      api: '/api',
+      admin: '/admin',
+      health: '/health',
+      contact: '/api/contact',
+      createOrder: '/api/create-order',
+      verifyPayment: '/api/verify-payment'
+    },
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
   });
-} else {
-  // In development, serve static files from the frontend/public directory
-  app.use(express.static(path.join(__dirname, '../frontend/public')));
-}
+});
 
 // ================= RAZORPAY ==================
 
@@ -357,15 +361,10 @@ app.post('/api/contact', validateContact, async (req, res) => {
 });
 
 // ================= SERVER STARTUP =================
-// ================= SERVER STARTUP =================
 const PORT = process.env.PORT || 3000;
 
-// For Vercel deployment
-if (process.env.VERCEL) {
-  // Export the Express API
-  module.exports = app;
-} else {
-  // Local development
+// Only start the server if this file is run directly (not when imported as a module)
+if (require.main === module) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Server is running on http://localhost:${PORT}`);
     console.log(`🔐 Admin dashboard: http://localhost:${PORT}/admin/contacts\n`);
@@ -387,3 +386,7 @@ if (process.env.VERCEL) {
     });
   });
 }
+
+// Export the Express API for Vercel
+module.exports = app;
+
