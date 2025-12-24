@@ -7,6 +7,7 @@ const supabase = require('./config/supabase');
 const Razorpay = require('razorpay');
 const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
 
+require('dotenv').config();
 const app = express();
 
 // =================== CONFIG ===================
@@ -356,15 +357,16 @@ app.post('/api/contact', validateContact, async (req, res) => {
 });
 
 // ================= SERVER STARTUP =================
+// ================= SERVER STARTUP =================
 const PORT = process.env.PORT || 3000;
 
-// Only start the server if this file is run directly (not when imported as a module)
-if (require.main === module) {
-  // Ensure environment variables are loaded
-  require('dotenv').config();
-  
-  // Start the server
-  app.listen(PORT, '0.0.0.0', () => {
+// For Vercel deployment
+if (process.env.VERCEL) {
+  // Export the Express API
+  module.exports = app;
+} else {
+  // Local development
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Server is running on http://localhost:${PORT}`);
     console.log(`🔐 Admin dashboard: http://localhost:${PORT}/admin/contacts\n`);
   }).on('error', (error) => {
@@ -375,6 +377,13 @@ if (require.main === module) {
     }
     process.exit(1);
   });
-}
 
-module.exports = app;
+  // Handle graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+      console.log('Server closed.');
+      process.exit(0);
+    });
+  });
+}
