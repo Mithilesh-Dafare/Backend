@@ -17,14 +17,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
 // ================= MIDDLEWARE =================
-// Configure CORS to allow requests from frontend
-app.use(cors({
-  origin: 'https://frontend-three-snowy-38.vercel.app/',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
 
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
