@@ -4,58 +4,48 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const { body, validationResult } = require('express-validator');
 const supabase = require('./config/supabase');
-const Razorpay = require('razorpay');
 const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
+
+// Load environment variables
+require('dotenv').config();
 
 const app = express();
 
 // =================== CONFIG ===================
-
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
 // ================= MIDDLEWARE =================
+// Configure CORS to allow requests from frontend
+app.use(cors({
+  origin: 'https://frontend-three-snowy-38.vercel.app/',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 
-app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// In production, serve static files from the frontend/dist directory
-if (isProduction) {
-  const frontendPath = path.join(__dirname, '../frontend/dist');
-  app.use(express.static(frontendPath));
-  
-  // Handle SPA (Single Page Application) routing
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
+// API Information Route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'SayOne Ventures API is running',
+    endpoints: {
+      api: '/api',
+      admin: '/admin',
+      health: '/health',
+      contact: '/api/contact',
+      // Order related endpoints removed as payment processing is not required
+    },
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
   });
-} else {
-  // In development, serve static files from the frontend/public directory
-  app.use(express.static(path.join(__dirname, '../frontend/public')));
-}
-
-// ================= RAZORPAY ==================
-
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 // ================= VALIDATION =================
-
-const validateOrder = [
-  body('name').notEmpty(),
-  body('phone').notEmpty(),
-  body('email').isEmail(),
-  body('address').notEmpty(),
-  body('city').notEmpty(),
-  body('country').notEmpty(),
-  body('postalCode').notEmpty(),
-  body('items').isArray({ min: 1 }),
-  body('totalAmount').isFloat({ min: 0 })
-];
-
 const validateContact = [
   body('name').notEmpty(),
   body('email').isEmail(),
@@ -263,76 +253,6 @@ Protected by Basic Authentication
   }
 });
 
-// ========== CREATE RAZORPAY ORDER ==========
-
-app.post('/api/create-order', validateOrder, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json(errors.array());
-
-    const amount = Math.round(req.body.totalAmount * 100);
-
-    const order = await razorpay.orders.create({
-      amount,
-      currency: 'INR',
-      receipt: `order_${Date.now()}`
-    });
-
-    res.json({ success: true, orderId: order.id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Order creation failed' });
-  }
-});
-
-// ========== VERIFY PAYMENT & SAVE ORDER ==========
-
-app.post('/api/verify-payment', validateOrder, async (req, res) => {
-  try {
-    const {
-      name, phone, email, address, city, country, postalCode,
-      items, totalAmount, paymentId
-    } = req.body;
-
-    const payment = await razorpay.payments.fetch(paymentId);
-    if (payment.status !== 'captured') {
-      return res.status(400).json({ error: 'Payment not captured' });
-    }
-
-    const { data: customer, error: cErr } = await supabase
-      .from('customers')
-      .insert([{ name, phone, email, address, city, country, postal_code: postalCode }])
-      .select()
-      .single();
-
-    if (cErr) throw cErr;
-
-    const { data: order, error: oErr } = await supabase
-      .from('orders')
-      .insert([{ customer_id: customer.id, total_amount: totalAmount, payment_status: 'completed', payment_id: paymentId }])
-      .select()
-      .single();
-
-    if (oErr) throw oErr;
-
-    for (const item of items) {
-      await supabase.from('order_items').insert([{
-        order_id: order.id,
-        millet_name: item.milletName,
-        quantity: item.quantity,
-        per_unit_price: item.price,
-        amount: item.quantity * item.price
-      }]);
-    }
-
-    res.json({ success: true, orderId: order.id });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Payment verification failed' });
-  }
-});
-
 // ========== CONTACT FORM ==========
 
 app.post('/api/contact', validateContact, async (req, res) => {
@@ -360,11 +280,7 @@ const PORT = process.env.PORT || 3000;
 
 // Only start the server if this file is run directly (not when imported as a module)
 if (require.main === module) {
-  // Ensure environment variables are loaded
-  require('dotenv').config();
-  
-  // Start the server
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Server is running on http://localhost:${PORT}`);
     console.log(`🔐 Admin dashboard: http://localhost:${PORT}/admin/contacts\n`);
   }).on('error', (error) => {
@@ -375,6 +291,16 @@ if (require.main === module) {
     }
     process.exit(1);
   });
+
+  // Handle graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+      console.log('Server closed.');
+      process.exit(0);
+    });
+  });
 }
 
+// Export the Express API for Vercel
 module.exports = app;
