@@ -18,7 +18,16 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 
 // ================= MIDDLEWARE =================
 
-app.use(cors());
+const cors = require('cors');
+
+app.use(cors({
+  origin: "https://www.sayoneventures.com",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
+app.options('*', cors());
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
