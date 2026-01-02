@@ -95,8 +95,8 @@ async function sendConfirmationEmail(name, email, message) {
             
             <p>If you have any urgent queries, please feel free to contact us directly:</p>
             <ul>
-              <li>Email: info@sayoneventures.com</li>
-              <li>Phone: +91-XXXXXXXXXX</li>
+              <li>Email: sales@sayoneventures.com</li>
+              <li>Phone: +91-7058766180</li>
             </ul>
             
             <p>Best regards,<br>
@@ -123,13 +123,13 @@ async function sendConfirmationEmail(name, email, message) {
       Our team will review your inquiry and get back to you within 24-48 hours. We value your interest in our premium organic millets and look forward to assisting you.
       
       If you have any urgent queries, please feel free to contact us directly:
-      Email: info@sayoneventures.com
-      Phone: +91-XXXXXXXXXX
+      Email: sales@sayoneventures.com
+      Phone: +91-7058766180
       
       Best regards,
       The SayOne Ventures Team
       
-      © 2024 SayOne Ventures. All rights reserved.
+      © 2025 SayOne Ventures. All rights reserved.
       This is an automated confirmation email. Please do not reply to this email.
     `
   };
