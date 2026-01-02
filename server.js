@@ -18,35 +18,21 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 
 // ================= MIDDLEWARE =================
 
-const cors = require('cors');
 
 app.use(cors({
   origin: "https://www.sayoneventures.com",
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
-app.options('*', cors());
+app.options("*", cors());
+
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// API Information Route
-app.get('/', (req, res) => {
-  res.json({
-    status: 'success',
-    message: 'SayOne Ventures API is running',
-    endpoints: {
-      api: '/api',
-      admin: '/admin',
-      health: '/health',
-      contact: '/api/contact',
-      // Order related endpoints removed as payment processing is not required
-    },
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString()
-  });
-});
+
 
 // ================= VALIDATION =================
 const validateContact = [
