@@ -19,8 +19,23 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 // ================= MIDDLEWARE =================
 
 
+// Allow requests from both the main domain and Vercel backend
+const allowedOrigins = [
+  "https://www.sayoneventures.com",
+  "https://backend-sandy-delta-67.vercel.app"
+];
+
 app.use(cors({
-  origin: "https://www.sayoneventures.com",
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
@@ -247,20 +262,62 @@ Protected by Basic Authentication
 app.post('/api/contact', validateContact, async (req, res) => {
   try {
     const { name, email, message } = req.body;
+    
+    console.log('Received contact form submission:', { name, email, message: message ? `${message.substring(0, 50)}...` : 'empty' });
 
-    const { error } = await supabase
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address' });
+    }
+
+    // Save to database
+    const { data, error: dbError } = await supabase
       .from('contacts')
-      .insert([{ name, email, message }]);
+      .insert([{ name, email, message }])
+      .select();
 
-    if (error) throw error;
+    if (dbError) {
+      console.error('Database error:', dbError);
+      // Don't fail the request if database insert fails, still try to send emails
+    } else {
+      console.log('Saved contact to database:', data);
+    }
 
-    await sendConfirmationEmail(name, email, message);
-    await sendAdminNotification(name, email, message);
+    // Send confirmation email to user
+    const confirmationResult = await sendConfirmationEmail(name, email, message);
+    if (!confirmationResult.success) {
+      console.error('Failed to send confirmation email:', confirmationResult.error);
+      // Continue even if confirmation email fails
+    }
 
-    res.json({ success: true, message: 'Message sent successfully' });
+    // Send notification to admin
+    const notificationResult = await sendAdminNotification(name, email, message);
+    if (!notificationResult.success) {
+      console.error('Failed to send admin notification:', notificationResult.error);
+      // Continue even if admin notification fails
+    }
+
+    // If we couldn't send either email, return a warning but still success
+    if (!confirmationResult.success || !notificationResult.success) {
+      return res.json({ 
+        success: true, 
+        message: 'Message received, but there was an issue sending notifications',
+        warning: 'Email notifications may not have been delivered'
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Thank you for your message! We\'ll get back to you soon.'
+    });
+    
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Contact failed' });
+    console.error('Unexpected error in contact form submission:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'An unexpected error occurred. Please try again later or contact us directly at sales@sayoneventures.com'
+    });
   }
 });
 
