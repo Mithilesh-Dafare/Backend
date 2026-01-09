@@ -1,7 +1,11 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER;
+// Constants
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.SMTP_USER;
+const SITE_NAME = 'SayOne Ventures';
+const SITE_EMAIL = process.env.SMTP_USER || 'noreply@sayoneventures.com';
+const SITE_URL = process.env.SITE_URL || 'https://www.sayoneventures.com';
 
 // Validate required environment variables
 const requiredEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD'];
@@ -25,11 +29,8 @@ if (emailEnabled) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD,
     },
-    // Add connection timeout
     connectionTimeout: 10000, // 10 seconds
-    // Add socket timeout
     socketTimeout: 10000, // 10 seconds
-    // Don't fail on invalid certificates
     tls: {
       rejectUnauthorized: process.env.NODE_ENV === 'production' // Only validate certs in production
     }
@@ -48,42 +49,13 @@ if (emailEnabled) {
   console.warn('Email service is disabled due to missing configuration');
 }
 
-// Function to safely send email with retry logic
-async function sendEmailWithRetry(mailOptions, maxRetries = 2) {
-  if (!emailEnabled) {
-    console.warn('Email service is disabled, not sending email');
-    return { success: false, error: 'Email service is disabled' };
-  }
-
-  let lastError;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Sending email (attempt ${attempt}/${maxRetries}) to ${mailOptions.to}`);
-      const info = await transporter.sendMail(mailOptions);
-      console.log('Email sent successfully:', info.messageId);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      lastError = error;
-      console.error(`Email send attempt ${attempt} failed:`, error);
-      
-      if (attempt < maxRetries) {
-        // Wait before retrying (exponential backoff)
-        const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, etc.
-        console.log(`Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  
-  console.error('All email send attempts failed');
-  return { 
-    success: false, 
-    error: lastError?.message || 'Failed to send email after multiple attempts' 
-  };
-}
-
-// Function to send confirmation email
+/**
+ * Send a confirmation email to the user who submitted the contact form
+ * @param {string} name - User's name
+ * @param {string} email - User's email address
+ * @param {string} message - User's message
+ * @returns {Promise<Object>} Result of the email sending attempt
+ */
 async function sendConfirmationEmail(name, email, message) {
   if (!emailEnabled) {
     console.warn('Email service is disabled, not sending confirmation email');
@@ -91,66 +63,37 @@ async function sendConfirmationEmail(name, email, message) {
   }
 
   const mailOptions = {
-    from: `"SayOne Ventures" <${process.env.SMTP_USER || 'noreply@sayoneventures.com'}>`,
+    from: `"${SITE_NAME}" <${SITE_EMAIL}>`,
     to: email,
-    subject: 'Thank You for Contacting SayOne Ventures',
+    subject: `Thank You for Contacting ${SITE_NAME}`,
     html: `
       <!DOCTYPE html>
       <html>
       <head>
         <style>
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-          }
-          .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f9f9f9;
-          }
-          .header {
-            background-color: #2d5016;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-          }
-          .content {
-            background-color: white;
-            padding: 30px;
-            border-radius: 0 0 5px 5px;
-          }
-          .footer {
-            text-align: center;
-            margin-top: 20px;
-            color: #666;
-            font-size: 12px;
-          }
-          .message-box {
-            background-color: #f0f8e8;
-            border-left: 4px solid #2d5016;
-            padding: 15px;
-            margin: 20px 0;
-          }
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
+          .header { background-color: #2d5016; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: white; padding: 30px; border-radius: 0 0 5px 5px; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .message-box { background-color: #f0f8e8; border-left: 4px solid #2d5016; padding: 15px; margin: 20px 0; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h1>SayOne Ventures</h1>
+            <h1>${SITE_NAME}</h1>
             <p>Premium Organic Millets</p>
           </div>
           <div class="content">
             <h2>Thank You for Contacting Us!</h2>
             <p>Dear ${name || 'Valued Customer'},</p>
-            <p>We have received your message and appreciate you taking the time to contact SayOne Ventures.</p>
+            <p>We have received your message and appreciate you taking the time to contact us.</p>
             
             ${message ? `
             <div class="message-box">
               <strong>Your Message:</strong>
-              <p>${String(message).replace(/\n/g, '<br>')}</p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
             </div>` : ''}
             
             <p>Our team will review your inquiry and get back to you within 24-48 hours. We value your interest in our premium organic millets and look forward to assisting you.</p>
@@ -162,10 +105,10 @@ async function sendConfirmationEmail(name, email, message) {
             </ul>
             
             <p>Best regards,<br>
-            <strong>The SayOne Ventures Team</strong></p>
+            <strong>The ${SITE_NAME} Team</strong></p>
           </div>
           <div class="footer">
-            <p>&copy; 2024 SayOne Ventures. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} ${SITE_NAME}. All rights reserved.</p>
             <p>This is an automated confirmation email. Please do not reply to this email.</p>
           </div>
         </div>
@@ -173,11 +116,11 @@ async function sendConfirmationEmail(name, email, message) {
       </html>
     `,
     text: `
-      Thank You for Contacting SayOne Ventures!
+      Thank You for Contacting ${SITE_NAME}!
       
-      Dear ${name},
+      Dear ${name || 'Valued Customer'},
       
-      We have received your message and appreciate you taking the time to contact SayOne Ventures.
+      We have received your message and appreciate you taking the time to contact us.
       
       Your Message:
       ${message}
@@ -189,9 +132,9 @@ async function sendConfirmationEmail(name, email, message) {
       Phone: +91-7058766180
       
       Best regards,
-      The SayOne Ventures Team
+      The ${SITE_NAME} Team
       
-      © 2025 SayOne Ventures. All rights reserved.
+      © ${new Date().getFullYear()} ${SITE_NAME}. All rights reserved.
       This is an automated confirmation email. Please do not reply to this email.
     `
   };
@@ -206,7 +149,13 @@ async function sendConfirmationEmail(name, email, message) {
   }
 }
 
-// Function to send admin notification
+/**
+ * Send a notification email to the admin about a new contact form submission
+ * @param {string} name - User's name
+ * @param {string} email - User's email address
+ * @param {string} message - User's message
+ * @returns {Promise<Object>} Result of the email sending attempt
+ */
 async function sendAdminNotification(name, email, message) {
   if (!emailEnabled) {
     console.warn('Email service is disabled, not sending admin notification');
@@ -219,7 +168,7 @@ async function sendAdminNotification(name, email, message) {
   }
 
   const mailOptions = {
-    from: `"SayOne Ventures Contact Form" <${process.env.SMTP_USER || 'noreply@sayoneventures.com'}>`,
+    from: `"${SITE_NAME} Contact Form" <${SITE_EMAIL}>`,
     to: ADMIN_EMAIL,
     subject: `New Contact Form Submission from ${name || 'a visitor'}`,
     html: `
@@ -227,53 +176,13 @@ async function sendAdminNotification(name, email, message) {
       <html>
       <head>
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            line-height: 1.6; 
-            margin: 0;
-            padding: 0;
-            color: #333;
-          }
-          .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            overflow: hidden;
-          }
-          .header { 
-            background-color: #2d5016; 
-            color: white; 
-            padding: 20px; 
-            text-align: center; 
-          }
-          .content { 
-            padding: 25px; 
-            background-color: #fff;
-          }
-          .footer { 
-            margin-top: 20px; 
-            padding-top: 15px;
-            border-top: 1px solid #eee;
-            font-size: 12px; 
-            color: #777; 
-            text-align: center; 
-          }
-          .message-box {
-            background-color: #f8f9fa;
-            border-left: 4px solid #2d5016;
-            padding: 12px 15px;
-            margin: 15px 0;
-            font-family: monospace;
-            white-space: pre-wrap;
-          }
-          .label {
-            font-weight: bold;
-            color: #2d5016;
-            display: inline-block;
-            min-width: 80px;
-          }
+          body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #ddd; border-radius: 5px; overflow: hidden; }
+          .header { background-color: #2d5016; color: white; padding: 20px; text-align: center; }
+          .content { padding: 25px; background-color: #fff; }
+          .footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; font-size: 12px; color: #777; text-align: center; }
+          .message-box { background-color: #f8f9fa; border-left: 4px solid #2d5016; padding: 12px 15px; margin: 15px 0; font-family: monospace; white-space: pre-wrap; }
+          .label { font-weight: bold; color: #2d5016; display: inline-block; min-width: 80px; }
         </style>
       </head>
       <body>
@@ -287,12 +196,12 @@ async function sendAdminNotification(name, email, message) {
             <p><span class="label">Time:</span> ${new Date().toLocaleString()}</p>
             
             <div class="message-box">
-              ${message ? String(message).replace(/\n/g, '<br>') : 'No message provided'}
+              ${message ? message.replace(/\n/g, '<br>') : 'No message provided'}
             </div>
             
             <div class="footer">
               <p>This is an automated message. Please respond to the sender directly.</p>
-              <p>This email was sent from the contact form on SayOne Ventures website.</p>
+              <p>This email was sent from the contact form on ${SITE_NAME} website.</p>
             </div>
           </div>
         </div>
@@ -306,13 +215,25 @@ async function sendAdminNotification(name, email, message) {
       Email: ${email || 'Not provided'}
       Time: ${new Date().toLocaleString()}
 
-      ${message ? String(message) : 'No message provided'}
+      Message:
+      ${message || 'No message provided'}
 
       This is an automated message. Please respond to the sender directly.
-      This email was sent from the contact form on SayOne Ventures website.
+      This email was sent from the contact form on ${SITE_NAME} website.
     `
   };
 
-  return sendEmailWithRetry(mailOptions);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Admin notification sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Error sending admin notification:', error);
+    return { success: false, error: error.message };
+  }
 }
 
+module.exports = {
+  sendConfirmationEmail,
+  sendAdminNotification
+};

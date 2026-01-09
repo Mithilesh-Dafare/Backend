@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const supabase = require('./config/supabase');
 const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
 
@@ -17,7 +18,6 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
 // ================= MIDDLEWARE =================
-
 
 // Allow requests from both the main domain and Vercel backend
 const allowedOrigins = [
@@ -43,18 +43,70 @@ app.use(cors({
 
 app.options("*", cors());
 
+app.use(bodyParser.json({ limit: '10kb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-
+// Security headers
+app.use((req, res, next) => {
+  // Set security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;");
+  
+  // Remove X-Powered-By header
+  res.removeHeader('X-Powered-By');
+  
+  next();
+});
 
 // ================= VALIDATION =================
 const validateContact = [
-  body('name').notEmpty(),
-  body('email').isEmail(),
-  body('message').notEmpty()
+  // Sanitize and validate name
+  body('name')
+    .trim()
+    .notEmpty().withMessage('Name is required')
+    .isLength({ max: 100 }).withMessage('Name must be less than 100 characters')
+    .escape(),
+
+  // Sanitize and validate email
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Email is required')
+    .isEmail().withMessage('Please enter a valid email address')
+    .normalizeEmail()
+    .isLength({ max: 255 }).withMessage('Email must be less than 255 characters'),
+
+  // Sanitize and validate message
+  body('message')
+    .trim()
+    .notEmpty().withMessage('Message is required')
+    .isLength({ max: 5000 }).withMessage('Message must be less than 5000 characters')
+    .escape(),
+
+  // Custom validation
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array().map(err => err.msg) 
+      });
+    }
+    next();
+  }
 ];
+
+// Rate limiting
+const contactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: {
+    success: false,
+    error: 'Too many contact form submissions from this IP, please try again after 15 minutes'
+  }
+});
 
 // ================= AUTH ======================
 
@@ -76,77 +128,7 @@ function adminAuth(req, res, next) {
 
 // Health check
 app.get('/', (req, res) => {
-  // Set content type to HTML
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  
-  // Send the HTML response
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>SayOne Ventures - Backend</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          line-height: 1.6;
-          margin: 0;
-          padding: 20px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          background-color: #f5f5f5;
-        }
-        .container {
-          text-align: center;
-          background: white;
-          padding: 2rem;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          max-width: 600px;
-          width: 100%;
-        }
-        h1 {
-          color: #2d5016;
-          margin-bottom: 1rem;
-        }
-        .status {
-          color: #4caf50;
-          font-weight: bold;
-          margin: 1rem 0;
-        }
-        .links {
-          margin-top: 2rem;
-        }
-        a {
-          display: inline-block;
-          margin: 0.5rem;
-          padding: 0.5rem 1rem;
-          background-color: #2d5016;
-          color: white;
-          text-decoration: none;
-          border-radius: 4px;
-        }
-        a:hover {
-          background-color: #3a661e;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>SayOne Ventures Backend</h1>
-        <div class="status">✅ Backend is running with Supabase</div>
-        <p>You're viewing the API backend server. Here are some useful links:</p>
-        <div class="links">
-          <a href="/admin/contacts">Admin Dashboard</a>
-          <a href="https://supabase.com/dashboard" target="_blank">Supabase Dashboard</a>
-        </div>
-      </div>
-    </body>
-    </html>
-  `);
+  res.json({ status: 'ok', message: 'Server is running' });
 });
 
 // ========== ADMIN CONTACT DASHBOARD ==========
@@ -259,58 +241,54 @@ Protected by Basic Authentication
 
 // ========== CONTACT FORM ==========
 
-app.post('/api/contact', validateContact, async (req, res) => {
+app.post('/api/contact', contactLimiter, validateContact, async (req, res) => {
   try {
     const { name, email, message } = req.body;
     
-    console.log('Received contact form submission:', { name, email, message: message ? `${message.substring(0, 50)}...` : 'empty' });
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, error: 'Please enter a valid email address' });
-    }
-
+    // Log the submission (without sensitive data)
+    console.log('Processing contact form submission from:', email);
+    
     // Save to database
-    const { data, error: dbError } = await supabase
-      .from('contacts')
-      .insert([{ name, email, message }])
-      .select();
-
-    if (dbError) {
+    let dbResult = null;
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([{ name, email, message }])
+        .select();
+      
+      if (error) throw error;
+      
+      dbResult = data;
+      console.log('Saved contact to database:', { id: data[0]?.id });
+    } catch (dbError) {
       console.error('Database error:', dbError);
-      // Don't fail the request if database insert fails, still try to send emails
-    } else {
-      console.log('Saved contact to database:', data);
+      // Continue even if database insert fails
     }
 
     // Send confirmation email to user
     const confirmationResult = await sendConfirmationEmail(name, email, message);
     if (!confirmationResult.success) {
       console.error('Failed to send confirmation email:', confirmationResult.error);
-      // Continue even if confirmation email fails
     }
 
     // Send notification to admin
     const notificationResult = await sendAdminNotification(name, email, message);
     if (!notificationResult.success) {
       console.error('Failed to send admin notification:', notificationResult.error);
-      // Continue even if admin notification fails
     }
 
-    // If we couldn't send either email, return a warning but still success
-    if (!confirmationResult.success || !notificationResult.success) {
-      return res.json({ 
-        success: true, 
-        message: 'Message received, but there was an issue sending notifications',
-        warning: 'Email notifications may not have been delivered'
-      });
-    }
-
-    res.json({ 
-      success: true, 
+    // Prepare response
+    const response = { 
+      success: true,
       message: 'Thank you for your message! We\'ll get back to you soon.'
-    });
+    };
+
+    // Add warning if there were issues with notifications
+    if (!confirmationResult.success || !notificationResult.success) {
+      response.warning = 'Your message was received, but there was an issue sending email notifications';
+    }
+
+    res.json(response);
     
   } catch (err) {
     console.error('Unexpected error in contact form submission:', err);
@@ -326,26 +304,26 @@ const PORT = process.env.PORT || 3000;
 
 // Only start the server if this file is run directly (not when imported as a module)
 if (require.main === module) {
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Server is running on http://localhost:${PORT}`);
-    console.log(`🔐 Admin dashboard: http://localhost:${PORT}/admin/contacts\n`);
-  }).on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(`❌ Port ${PORT} is already in use. Please free the port or specify a different port.`);
-    } else {
-      console.error('❌ Failed to start server:', error.message);
-    }
-    process.exit(1);
-  });
-
-  // Handle graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Shutting down gracefully...');
-    server.close(() => {
-      console.log('Server closed.');
-      process.exit(0);
+  if (process.env.NODE_ENV !== 'test') {
+    const server = app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
     });
-  });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (err) => {
+      console.error('Unhandled Rejection:', err);
+      server.close(() => process.exit(1));
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received. Shutting down gracefully...');
+      server.close(() => {
+        console.log('Server closed.');
+        process.exit(0);
+      });
+    });
+  }
 }
 
 // Export the Express API for Vercel
