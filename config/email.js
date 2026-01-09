@@ -233,7 +233,57 @@ async function sendAdminNotification(name, email, message) {
   }
 }
 
+// Test email function
+async function sendTestEmail() {
+  if (!emailEnabled) {
+    const error = new Error('Email service is disabled due to missing or invalid configuration');
+    error.missingVars = missingVars;
+    throw error;
+  }
+
+  const testEmail = {
+    from: `"${SITE_NAME} Test" <${SITE_EMAIL}>`,
+    to: ADMIN_EMAIL,
+    subject: `[${SITE_NAME}] Test Email`,
+    text: `This is a test email sent from ${SITE_NAME} at ${new Date().toISOString()}`,
+    html: `
+      <h1>Test Email from ${SITE_NAME}</h1>
+      <p>This is a test email sent at ${new Date().toLocaleString()}</p>
+      <p>If you're seeing this, your email configuration is working correctly!</p>
+    `
+  };
+
+  try {
+    const info = await transporter.sendMail(testEmail);
+    return {
+      success: true,
+      message: 'Test email sent successfully',
+      messageId: info.messageId,
+      config: {
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: process.env.SMTP_SECURE,
+        user: process.env.SMTP_USER
+      }
+    };
+  } catch (error) {
+    console.error('Test email failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      config: {
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: process.env.SMTP_SECURE,
+        user: process.env.SMTP_USER ? '*****' : undefined
+      }
+    };
+  }
+}
+
 module.exports = {
   sendConfirmationEmail,
-  sendAdminNotification
+  sendAdminNotification,
+  sendTestEmail
 };

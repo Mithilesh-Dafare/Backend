@@ -131,6 +131,18 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
+// Email test endpoint
+app.get('/test-email', async (req, res) => {
+  try {
+    const { sendTestEmail } = require('./config/email');
+    const result = await sendTestEmail();
+    res.json(result);
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ========== ADMIN CONTACT DASHBOARD ==========
 
 app.get('/admin/contacts', adminAuth, async (req, res) => {
