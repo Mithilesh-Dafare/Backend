@@ -5,7 +5,7 @@ const path = require('path');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const supabase = require('./config/supabase');
-const { sendConfirmationEmail, sendAdminNotification } = require('./config/email');
+const { sendEmails } = require('./config/email');
 
 // Load environment variables
 require('dotenv').config();
@@ -131,18 +131,6 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
-// Email test endpoint
-app.get('/test-email', async (req, res) => {
-  try {
-    const { sendTestEmail } = require('./config/email');
-    const result = await sendTestEmail();
-    res.json(result);
-  } catch (error) {
-    console.error('Test email error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ========== ADMIN CONTACT DASHBOARD ==========
 
 app.get('/admin/contacts', adminAuth, async (req, res) => {
@@ -253,32 +241,26 @@ Protected by Basic Authentication
 
 // ========== CONTACT FORM ==========
 
-app.post('/api/contact', contactLimiter, validateContact, async (req, res) => {
-  try {
-    const { name, email, message } = req.body;
-    
-    // Log the submission (without sensitive data)
-    console.log('Processing contact form submission from:', email);
-    
-    // Save to database
-    let dbResult = null;
-    try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert([{ name, email, message }])
-        .select();
-      
-      if (error) throw error;
-      
-      dbResult = data;
-      console.log('Saved contact to database:', { id: data[0]?.id });
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      // Continue even if database insert fails
-    }
+app.post('/api/contact', [
+  body('name').trim().isLength({ min: 1 }).withMessage('Name is required'),
+  body('email').isEmail().withMessage('Please enter a valid email'),
+  body('message').trim().isLength({ min: 1 }).withMessage('Message is required')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
-    // Send confirmation email to user
-    const confirmationResult = await sendConfirmationEmail(name, email, message);
+  const { name, email, message } = req.body;
+
+  try {
+    // Save to database
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert([{ name, email, message }])
+      .select();
+
+    if (error) throw error;
     if (!confirmationResult.success) {
       console.error('Failed to send confirmation email:', confirmationResult.error);
     }
