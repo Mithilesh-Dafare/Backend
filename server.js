@@ -303,15 +303,22 @@ app.post('/api/contact', [
       .insert([{ name, email, message }])
       .select();
 
-    if (error) throw error;
-    if (!confirmationResult.success) {
-      console.error('Failed to send confirmation email:', confirmationResult.error);
+    if (error) {
+      console.error('Database error:', error);
+      throw error;
     }
 
     // Send notification to admin
-    const notificationResult = await sendAdminNotification(name, email, message);
-    if (!notificationResult.success) {
-      console.error('Failed to send admin notification:', notificationResult.error);
+    let notificationSuccess = true;
+    try {
+      const notificationResult = await sendAdminNotification(name, email, message);
+      if (!notificationResult.success) {
+        console.error('Failed to send admin notification:', notificationResult.error);
+        notificationSuccess = false;
+      }
+    } catch (notifError) {
+      console.error('Error sending admin notification:', notifError);
+      notificationSuccess = false;
     }
 
     // Prepare response
@@ -321,7 +328,7 @@ app.post('/api/contact', [
     };
 
     // Add warning if there were issues with notifications
-    if (!confirmationResult.success || !notificationResult.success) {
+    if (!notificationSuccess) {
       response.warning = 'Your message was received, but there was an issue sending email notifications';
     }
 
