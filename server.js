@@ -239,6 +239,49 @@ Protected by Basic Authentication
   }
 });
 
+// ========== TEST EMAIL ENDPOINT ==========
+app.get('/api/test-email', async (req, res) => {
+    try {
+        // Use the SMTP user's email for testing
+        if (!process.env.SMTP_USER) {
+            throw new Error('SMTP_USER is not configured in environment variables');
+        }
+        
+        const testEmail = process.env.SMTP_USER; // Send test to the SMTP user's email
+        const testName = 'Test User';
+        const testMessage = 'This is a test message to verify email functionality';
+        
+        console.log('Sending test emails to:', testEmail);
+        console.log('Using SMTP server:', process.env.SMTP_HOST);
+        
+        const result = await sendEmails(testName, testEmail, testMessage);
+        
+        if (result.success) {
+            console.log('Test emails sent successfully');
+            res.json({
+                success: true,
+                message: 'Test emails sent successfully!',
+                details: `Check ${testEmail} and ${process.env.ADMIN_EMAIL} for test messages.`
+            });
+        } else {
+            console.error('Failed to send test emails:', result);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to send test emails',
+                details: result.details || 'No additional error details',
+                code: result.code || 'UNKNOWN_ERROR'
+            });
+        }
+    } catch (error) {
+        console.error('Error in test email endpoint:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            details: error.message
+        });
+    }
+});
+
 // ========== CONTACT FORM ==========
 
 app.post('/api/contact', [
