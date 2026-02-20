@@ -311,6 +311,28 @@ app.post('/api/contact', [
       throw error;
     }
 
+    // Forward to n8n webhook if configured
+    let webhookSuccess = true;
+    if (process.env.N8N_WEBHOOK_URL) {
+      try {
+        const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, message })
+        });
+        
+        if (!webhookResponse.ok) {
+          console.error('Webhook failed:', webhookResponse.status, webhookResponse.statusText);
+          webhookSuccess = false;
+        } else {
+          console.log('Webhook forwarded successfully');
+        }
+      } catch (webhookError) {
+        console.error('Error forwarding to webhook:', webhookError);
+        webhookSuccess = false;
+      }
+    }
+
     // Send notification to admin
     let notificationSuccess = true;
     try {
@@ -330,9 +352,17 @@ app.post('/api/contact', [
       message: 'Thank you for your message! We\'ll get back to you soon.'
     };
 
-    // Add warning if there were issues with notifications
+    // Add warnings if there were issues
+    const warnings = [];
     if (!notificationSuccess) {
-      response.warning = 'Your message was received, but there was an issue sending email notifications';
+      warnings.push('There was an issue sending email notifications');
+    }
+    if (!webhookSuccess) {
+      warnings.push('There was an issue forwarding to the workflow system');
+    }
+    
+    if (warnings.length > 0) {
+      response.warning = warnings.join('; ');
     }
 
     res.json(response);
