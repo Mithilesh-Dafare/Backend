@@ -314,7 +314,7 @@ app.post('/api/contact', [
     // Send notification to admin
     let notificationSuccess = true;
     try {
-      const notificationResult = await sendAdminNotification(name, email, message);
+      const notificationResult = await sendEmails(name, email, message);
       if (!notificationResult.success) {
         console.error('Failed to send admin notification:', notificationResult.error);
         notificationSuccess = false;
