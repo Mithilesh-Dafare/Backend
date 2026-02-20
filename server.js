@@ -314,7 +314,7 @@ app.post('/api/contact', [
 
     // Forward to n8n webhook if configured
     let webhookSuccess = true;
-    if (process.env.N8N_WEBHOOK_URL) {
+    if (process.env.N8N_WEBHOOK_URL && process.env.ENABLE_N8N_WEBHOOK === 'true') {
       try {
         const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
           method: 'POST',
@@ -332,6 +332,8 @@ app.post('/api/contact', [
         console.error('Error forwarding to webhook:', webhookError);
         webhookSuccess = false;
       }
+    } else {
+      console.log('N8N webhook forwarding is disabled');
     }
 
     // Send notification to admin
