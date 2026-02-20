@@ -6,6 +6,7 @@ const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const supabase = require('./config/supabase');
 const { sendEmails } = require('./config/email');
+const fetch = require('node-fetch');
 
 // Load environment variables
 require('dotenv').config();
