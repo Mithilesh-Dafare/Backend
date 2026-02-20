@@ -10,6 +10,9 @@ const { sendEmails } = require('./config/email');
 // Load environment variables
 require('dotenv').config();
 
+
+
+
 const app = express();
 
 // =================== CONFIG ===================
