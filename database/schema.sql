@@ -38,7 +38,10 @@ CREATE TABLE IF NOT EXISTS contacts (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL,
-  message TEXT NOT NULL,
+  phone VARCHAR(20),
+  country VARCHAR(100) NOT NULL,
+  organization VARCHAR(255) NOT NULL,
+  role VARCHAR(255) NOT NULL,
+  message TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
