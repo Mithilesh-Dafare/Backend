@@ -26,10 +26,10 @@ const supabase = createClient(
   }
 );
 
-// Test the connection
+// Test the connection (only during development, not in production)
 const testConnection = async () => {
   try {
-    const { data, error } = await supabase.from('customers').select('*').limit(1);
+    const { data, error } = await supabase.from('contacts').select('*').limit(1);
     if (error) throw error;
     console.log('✅ Successfully connected to Supabase');
   } catch (error) {
@@ -38,6 +38,9 @@ const testConnection = async () => {
   }
 };
 
-testConnection();
+// Only test connection during development, not in serverless functions
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL_ENV) {
+  testConnection();
+}
 
 module.exports = supabase;
